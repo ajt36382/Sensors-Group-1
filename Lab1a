@@ -1,0 +1,24 @@
+//Initial test for blink and hello worled response through the serial port
+void setup() {
+  // Start the serial communication at 115200 baud rate
+  Serial.begin(9600
+);
+
+  // Set the GPIO pin for the onboard LED (GPIO 2 is commonly used for the built-in LED)
+  pinMode(2, OUTPUT);  // Use GPIO 2 for the onboard LED
+}
+
+void loop() {
+  // Turn the LED on
+  digitalWrite(2, HIGH);  // Turn on the LED connected to GPIO 2
+  // Wait for 500 milliseconds
+  delay(500);
+  
+  // Turn the LED off
+  digitalWrite(2, LOW);  // Turn off the LED
+  // Wait for 500 milliseconds
+  delay(500);
+
+  // Send "Hello, World!" to the serial monitor
+  Serial.println("Hello, World!");
+}
