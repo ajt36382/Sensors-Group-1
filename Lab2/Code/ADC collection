@@ -1,0 +1,23 @@
+
+const int analogPin = 4; //ADC pin
+
+void setup() {
+  // serial 9600
+  Serial.begin(9600);
+  
+  // Configure ADC for collection at 12 bit
+  analogReadResolution(12); // 12-bit resolution (0-4095)
+  analogSetAttenuation(ADC_0db); // Set attenuation (0db for full scale 0-3.3V)
+}
+
+void loop() {
+  // 
+  int adcValue = analogRead(analogPin);
+  
+  // print value
+  Serial.print("ADC Value: ");
+  Serial.println(adcValue);
+  
+  // Add a small delay
+  delay(500);
+}
