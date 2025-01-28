@@ -1,0 +1,26 @@
+//BlinkLED and Serial Print on ESp32
+
+
+
+void setup() {
+  // serial to 9600
+  Serial.begin(9600
+);
+
+  // Blink function is set to GPIO 2
+  pinMode(2, OUTPUT);
+}
+
+void loop() {
+  digitalWrite(2, HIGH);  // LED on
+  // wait for change
+  delay(500);
+  
+  // LED off
+  digitalWrite(2, LOW);
+  // wait
+  delay(500);
+
+  // serial Hello World
+  Serial.println("Hello, World!");
+}
