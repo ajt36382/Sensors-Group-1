@@ -1,0 +1,56 @@
+#include <ESP32Servo.h>
+
+// 2 servo devices
+Servo myservo;
+Servo theservo;
+
+// Pin definitions for servos and potentiometer
+int servoPin = 32;  //servo 1
+int servoPin2 = 33; //servo 2
+int potPin = 36; //ADC pin
+int ADC_Max = 4096; //initialize ADC
+// Position variables
+int pos = 0;
+int pos2 = 0;    
+int val;
+int val2; // potentiometer value for adc
+
+void setup() {
+  Serial.begin(9600);
+  // timers from ESP32 sample code
+  ESP32PWM::allocateTimer(0);
+  ESP32PWM::allocateTimer(1);
+  ESP32PWM::allocateTimer(2);
+  ESP32PWM::allocateTimer(3);
+
+  // Set servo period to 50Hz or 20ms
+  myservo.setPeriodHertz(50);
+  theservo.setPeriodHertz(50);
+
+  // Attach the servos to their pins
+  myservo.attach(servoPin, 500, 2500);  // servo1 to 32
+  theservo.attach(servoPin2, 500, 2500);  // Servo2 to 33
+}
+
+void loop() {
+  val = analogRead(potPin);
+  val2 = analogRead(potPin); //read ADC
+
+  // Map for servo 1 to take integer values from 0 to 255
+  val = map(val, 0, ADC_Max, 0, 255); 
+
+  // Map for servo 2 to have a low resolution of 3 bits so 8 total values
+  val2 = map(val2, 0, ADC_Max, 0, 7);
+
+  // Write to both servos
+  myservo.write(val); // servo 1 with higher resolution (0-255)
+  theservo.write(map(val2, 0, 7, 0, 180)); // servo 2 with low resolution (mapped to 0-180 degrees)
+
+  // debug values
+  Serial.print("Servo 1 Value: ");
+  Serial.println(val);  
+  Serial.print("Servo 2 Value (Low Res): ");
+  Serial.println(val2);
+
+  delay(200);
+}
