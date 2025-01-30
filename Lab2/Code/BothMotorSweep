@@ -1,0 +1,45 @@
+#include <ESP32Servo.h>  // Include the ESP32Servo library
+
+// Create two servo objects
+Servo myservo;
+Servo theservo;
+
+// Pin definitions for servos
+int servoPin = 32;  
+int servoPin2 = 33;
+//int potPin = 36;
+//int ADC_Max = 4096;
+// Position variables
+int pos = 0;
+int pos2 = 0;    
+//int val;
+void setup() {
+  // Allow allocation of all timers for PWM (good practice)
+  ESP32PWM::allocateTimer(0);
+  ESP32PWM::allocateTimer(1);
+  ESP32PWM::allocateTimer(2);
+  ESP32PWM::allocateTimer(3);
+
+  // Set servo period to 50Hz (standard for most servos)
+  myservo.setPeriodHertz(50);
+  theservo.setPeriodHertz(50);
+
+  // Attach the servos to the corresponding pins, with PWM min/max range set for most servos
+  myservo.attach(servoPin, 500, 2500);  // Servo 1 attached to GPIO 32
+  theservo.attach(servoPin2, 500, 2500);  // Servo 2 attached to GPIO 33
+}
+
+void loop() {
+  // Sweep both servos from 0° to 180° and back simultaneously
+  for (pos = 0, pos2 = 0; pos <= 180; pos++, pos2++) { 
+    myservo.write(pos);    // Move myservo to position 'pos'
+    theservo.write(pos2);  // Move theservo to position 'pos2'
+    delay(15);             // Wait for the servos to reach the positions
+  }
+
+  for (pos = 180, pos2 = 180; pos >= 0; pos--, pos2--) { 
+    myservo.write(pos);    // Move myservo to position 'pos'
+    theservo.write(pos2);  // Move theservo to position 'pos2'
+    delay(15);             // Wait for the servos to reach the positions
+  }
+}
