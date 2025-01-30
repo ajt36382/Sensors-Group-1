@@ -1,12 +1,12 @@
-#include <ESP32Servo.h>  // Include the ESP32Servo library
+#include <ESP32Servo.h> //library used for ESP32 Servos for non Arduino Devices
 
-// Create two servo objects
+// 2 servo devices
 Servo myservo;
 Servo theservo;
 
-// Pin definitions for servos
-int servoPin = 32;  
-int servoPin2 = 33;
+// Pin definitions for servos and potentiometer
+int servoPin = 32;  //servo 1
+int servoPin2 = 33; //servo 2
 int potPin = 36; //ADC pin
 int ADC_Max = 4096; //initialize ADC
 // Position variables
