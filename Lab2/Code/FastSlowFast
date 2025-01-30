@@ -1,0 +1,64 @@
+#include <ESP32Servo.h>
+
+// 2 servo devices
+Servo myservo;
+Servo theservo;
+
+// Pin definitions for servos and potentiometer
+int servoPin = 32;  // servo 1
+int servoPin2 = 33; // servo 2
+int potPin = 36; // ADC pin
+int ADC_Max = 4096; // initialize ADC
+// Position variables
+int val;
+int val2;
+float preVal2 = 0;  // previous position for servo 2 to calculate speed
+float speedmod = 0.1;  // Speed factor for easing effect
+unsigned long lastmove = 0; // Track time for servo 2 movement
+
+void setup() {
+  Serial.begin(9600);
+  
+  // Set servo period to 50Hz or 20ms
+  myservo.setPeriodHertz(50);
+  theservo.setPeriodHertz(50);
+
+  // Attach the servos to their pins
+  myservo.attach(servoPin, 500, 2500);  // servo1 to 32
+  theservo.attach(servoPin2, 500, 2500);  // servo2 to 33
+}
+
+void loop() {
+  // servo 1 
+  val = analogRead(potPin);
+  val = map(val, 0, ADC_Max, 0, 180); // map servo 1 value
+  
+  // write to servo 1
+  myservo.write(val);
+
+  // map pot 2 for use later
+  val2 = map(analogRead(potPin), 0, ADC_Max, 0, 180); // map servo 2 value
+
+  // time use for fast slow fast movement ish
+  unsigned long currentTime = millis();
+  unsigned long timeDiff = currentTime - lastmove;
+
+  // use the time to determine if it should move fast or slow
+  if (timeDiff >= (int)(10 * speedmod)) {
+    // then slow
+    float position = prevVal2 + (val2 - prevVal2) * 0.1; // slow the movement
+    theservo.write(position);  // write the new movement
+    prevVal2 = position;  // keep previous location and then compare to its new one
+
+    // update move
+    lastMoveTime = currentTime;
+  }
+
+  // Print debug values
+  Serial.print("Servo 1 Value: ");
+  Serial.println(val);  
+  Serial.print("Servo 2 Value slowfastslow: ");
+  Serial.println(prevVal2);
+
+  delay(20); 
+}
