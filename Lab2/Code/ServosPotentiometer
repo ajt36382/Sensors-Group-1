@@ -12,7 +12,8 @@ int ADC_Max = 4096; //initialize ADC
 // Position variables
 int pos = 0;
 int pos2 = 0;    
-int val; //portentiometer value for adc
+int val;
+int val2; //portentiometer value for adc
 void setup() {
   Serial.begin(9600);
   // timers from ESP32 sample code
@@ -31,10 +32,13 @@ void setup() {
 }
 
 void loop() {
-  val = analogRead(potPin); //read ADC
-  val = map(val, 0, ADC_Max, 0, 180); //map it and its bounds
+  val = analogRead(potPin);
+  val2 = analogRead(potPin); //read ADC
+  val = map(val, 0, ADC_Max, 0, 180); //map servo 1 value
+  val2 = map(val2, 0, ADC_Max, 0, 180); //map it and its bounds
   myservo.write(val); // write to both servos
-  theservo.write(val);
-  Serial.println(val); //temp debug
+  theservo.write(val2);
+  Serial.println(val);
+  Serial.println(val2); //temp debug
   delay(200);
 }
