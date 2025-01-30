@@ -13,7 +13,7 @@ int ADC_Max = 4096; // initialize ADC
 int val;
 int val2;
 float preVal2 = 0;  // previous position for servo 2 to calculate speed
-float speedmod = 0.1;  // Speed factor for easing effect
+float speedmod = 0.1;  // speed factor for fast slow fast
 unsigned long lastmove = 0; // Track time for servo 2 movement
 
 void setup() {
