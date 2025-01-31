@@ -1,0 +1,59 @@
+#include <ESP32Servo.h>
+
+// 2 servo devices
+Servo myservo;
+Servo theservo;
+
+// Pin definitions for servos and potentiometer
+int servoPin = 32;  //servo 1
+int servoPin2 = 33; //servo 2
+int potPin = 36; //ADC pin
+int ADC_Max = 4096; //initialize ADC
+// Position variables
+int pos = 0;
+int pos2 = 0;    
+int val;
+int val2; //potentiometer value for adc
+
+// saturation value
+int saturationThreshold = 150; // used max value for servo 2
+
+void setup() {
+  Serial.begin(9600);
+  // timers from ESP32 sample code
+  ESP32PWM::allocateTimer(0);
+  ESP32PWM::allocateTimer(1);
+  ESP32PWM::allocateTimer(2);
+  ESP32PWM::allocateTimer(3);
+
+  // Set servo period to 50Hz or 20ms
+  myservo.setPeriodHertz(50);
+  theservo.setPeriodHertz(50);
+
+  // Attach the servos to their pins
+  myservo.attach(servoPin, 500, 2500);  // servo1 to 32
+  theservo.attach(servoPin2, 500, 2500);  // Servo2 to 33
+}
+
+void loop() {
+  val = analogRead(potPin); // Read potentiometer for servo 1
+  val2 = analogRead(potPin); // Read potentiometer for servo 2
+  
+  // Map servo 1 to the normal 0-180 range
+  val = map(val, 0, ADC_Max, 0, 180);
+  
+  // Map servo 2 to the normal 0-saturationThreshold
+  val2 = map(val2, 0, ADC_Max, 0, saturationThreshold);
+  
+  // stabilization so that the map function wont try to overwrite the saturation limit set by the function above.
+  if (val2 > saturationThreshold) {
+    val2 = saturationThreshold;
+  }
+  
+  myservo.write(val);  // servo 1 normal
+  theservo.write(val2);  // servo 2 saturation
+  //debugging stuff
+  Serial.println(val);
+  Serial.println(val2);
+  delay(200);
+}
