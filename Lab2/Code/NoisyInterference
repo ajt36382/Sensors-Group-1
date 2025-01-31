@@ -1,0 +1,70 @@
+#include <ESP32Servo.h>
+
+// 2 servo devices
+Servo myservo;
+Servo theservo;
+
+// Pin definitions for servos and potentiometer
+int servoPin = 32;  // servo 1
+int servoPin2 = 33; // servo 2
+int potPin = 36; // ADC pin
+int ADC_Max = 4096; // initialize ADC
+// Position variables
+int val;
+int val2;
+int noiseFactor = 15; // Noise factor for servo 1
+int interferenceFactor = 30; // Interference factor for servo 2
+
+void setup() {
+  Serial.begin(9600);
+  // timers from ESP32 sample code
+  ESP32PWM::allocateTimer(0);
+  ESP32PWM::allocateTimer(1);
+  ESP32PWM::allocateTimer(2);
+  ESP32PWM::allocateTimer(3);
+
+  // Set servo period to 50Hz or 20ms
+  myservo.setPeriodHertz(50);
+  theservo.setPeriodHertz(50);
+
+  // Attach the servos to their pins
+  myservo.attach(servoPin, 500, 2500);  // servo1 to 32
+  theservo.attach(servoPin2, 500, 2500);  // Servo2 to 33
+}
+
+void loop() {
+  val = analogRead(potPin); // Read potentiometer for both servos
+
+  // noise
+  int noise = random(-noiseFactor, noiseFactor); // random value within range
+  val = map(val, 0, ADC_Max, 0, 180);  // Map potentiometer value to range 0-180
+  val += noise; // Add noise to servo 1
+
+  // Ensure val stays within the valid range 0-180
+  if (val < 0) val = 0;
+  if (val > 180) val = 180;
+
+  // Write to servo 1 with noise
+  myservo.write(val);
+
+  // interference, random value change
+  val2 = analogRead(potPin); // pot
+  val2 = map(val2, 0, ADC_Max, 0, 180);  // Map potentiometer value for servo 2
+  int interference = random(-interferenceFactor, interferenceFactor); // Random interference between max and min
+  val2 += interference; // add it to sent value
+
+  // Ensure val2 stays within the valid range 0-180
+  if (val2 < 0) val2 = 0;
+  if (val2 > 180) val2 = 180;
+
+  // servo 2 interference
+  theservo.write(val2);
+
+  // debug
+  Serial.print("Servo 1 Value (Noisy): ");
+  Serial.println(val);
+  Serial.print("Servo 2 Value (With Interference): ");
+  Serial.println(val2);
+
+  delay(50); // delay
+}
