@@ -1,0 +1,118 @@
+#include "ThingSpeak.h"
+#include "WiFi.h"
+#include "esp_eap_client.h"
+#include <Wire.h>
+#include <SPI.h>
+#include <Adafruit_BMP280.h>
+
+#define EAP_IDENTITY "ajt36382"
+#define EAP_USERNAME "ajt36382"
+#define EAP_PASSWORD "ATuck4000!?"
+#define MAX_DISCONNECTS 4
+const char* ssid = "PAWS-Secure";
+unsigned char disconnectNum = 0;
+WiFiClient client;
+
+// ThingSpeak configuration
+#define THINGSPEAK_WRITE_KEY "J4LPGH2C51G60CND"
+#define CHANNEL_NAME 2648769
+
+unsigned long prev_millis = 0;
+int counter = 0;
+
+// BMP280 sensor configuration
+Adafruit_BMP280 bmp;  // use I2C interface, connections 21 for SDI and 22 for SCK
+Adafruit_Sensor *bmp_temp = bmp.getTemperatureSensor();
+Adafruit_Sensor *bmp_pressure = bmp.getPressureSensor();
+
+// WiFi event handlers
+void WiFiStationConnected(WiFiEvent_t event) {
+  Serial.println("Connected to AP successfully!");
+}
+
+void WiFiGotIP(WiFiEvent_t event) {
+  Serial.println("WiFi connected");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+}
+
+void WiFiStationDisconnected(WiFiEvent_t event) {
+  Serial.println("Disconnected from WiFi access point");
+  Serial.print("WiFi lost connection. Trying to reconnect...");
+  if (disconnectNum < MAX_DISCONNECTS) {
+    Serial.print("Attempt #");
+    Serial.println(disconnectNum + 1);
+    WiFi.begin(ssid, WPA2_AUTH_PEAP, EAP_IDENTITY, EAP_USERNAME, EAP_PASSWORD);
+    delay(30000);  // 30-second retry
+  } else {
+    Serial.println("Max reconnect attempts reached. Restarting...");
+    ESP.restart();  // Restart the ESP32 after max retries
+  }
+  disconnectNum++;
+}
+
+// WiFi setup function
+void wifiSetup() {
+  WiFi.disconnect(true);
+  WiFi.onEvent(WiFiStationConnected, ARDUINO_EVENT_WIFI_STA_CONNECTED);
+  WiFi.onEvent(WiFiGotIP, ARDUINO_EVENT_WIFI_STA_GOT_IP);
+  WiFi.onEvent(WiFiStationDisconnected, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
+  WiFi.mode(WIFI_STA);
+
+  Serial.println("Attempting to connect to WiFi...");
+  WiFi.begin(ssid, WPA2_AUTH_PEAP, EAP_IDENTITY, EAP_USERNAME, EAP_PASSWORD);
+
+  int status = WiFi.waitForConnectResult();
+  if (status != WL_CONNECTED) {
+    Serial.println("Connection failed, retrying...");
+  } else {
+    Serial.println("Connected to WiFi successfully!");
+  }
+
+  ThingSpeak.begin(client); //initialize Thingspeak connection
+}
+
+void setup() {
+  // serial
+  Serial.begin(115200);
+
+  // Setup WiFi and ThingSpeak
+  wifiSetup();
+
+  // BMP sensor code from example
+  unsigned status = bmp.begin();
+  if (!status) {
+    Serial.println(F("Could not find a valid BMP280 sensor"));
+    while (1) delay(10);  // Stay here if the sensor is not found
+  }
+
+  bmp.setSampling(Adafruit_BMP280::MODE_NORMAL,     // Operating Mode
+                  Adafruit_BMP280::SAMPLING_X2,     // Temp. oversampling
+                  Adafruit_BMP280::SAMPLING_X16,    // Pressure oversampling
+                  Adafruit_BMP280::FILTER_X16,      // Filtering
+                  Adafruit_BMP280::STANDBY_MS_500); // Standby time
+
+  bmp_temp->printSensorDetails();
+}
+
+void loop() {
+  // Get sensor data
+  sensors_event_t temp_event, pressure_event;
+  bmp_temp->getEvent(&temp_event);
+  bmp_pressure->getEvent(&pressure_event);
+
+//gather temperature from BMP
+  Serial.print(F("Temperature = "));
+  Serial.print(temp_event.temperature);
+  Serial.println(" *C");
+// gather pressure from BMP
+  Serial.print(F("Pressure = "));
+  Serial.print(pressure_event.pressure);
+  Serial.println(" hPa");
+// send data to thingspeak through the write code
+  ThingSpeak.setField(1, temp_event.temperature);
+  ThingSpeak.setField(2, pressure_event.pressure);
+  ThingSpeak.writeFields(CHANNEL_NAME, THINGSPEAK_WRITE_KEY);
+
+  delay(2000);  // Delay before next loop iteration
+}
