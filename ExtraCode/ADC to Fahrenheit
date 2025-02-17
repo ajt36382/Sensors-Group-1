@@ -1,0 +1,36 @@
+const int analogPin = 36; //ADC pin
+
+void setup() {
+  // serial 9600
+  Serial.begin(9600);
+  delay(1000);
+}
+
+void loop() {
+  int adcValue = analogRead(analogPin); //read the ADC value
+  float voltage = ((float)(adcValue + 188)/ 1296);
+
+
+  float Vwithoutbias = ((float voltage) + 2.367); //get the voltage without bias
+
+
+ float Vbridge = ((float Vwithoutbias - 0)/4.3); //the bias divided by the gain
+
+ float LinearResistance = ((-float Vbridge + 5)1000/(2 Vbridge -5)); //converting Vbridge to Linear Resistance
+
+ float T_KelvReversed = ((float LinearResistance - b)/ slope); //going from linear resistance to nonlinear
+ float NonlinearR = (( slope * T_KelvReversed) + b);
+
+float FarhenT = (T_KelvReversed - 273.15); //kelvin to fahrenheit
+
+
+  //use a float and the formula based on collected data from line of best fit
+
+  // print values
+  Serial.print("ADC Value: ");
+  Serial.println(adcValue);
+  Serial.print("VoltageEstimateConversion: ");
+  Serial.println(voltage, 3); //print to 3 decimal places for voltage
+  // Add a small delay
+  delay(500);
+}
