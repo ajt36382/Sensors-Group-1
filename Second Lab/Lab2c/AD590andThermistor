@@ -1,0 +1,45 @@
+#include <math.h>
+
+
+const int analogPin2 = 39;
+const int analogPin = 36; //ADC pin
+float constant = exp(-3636 / 298.15);
+void setup() {
+  // serial 9600
+  Serial.begin(9600);
+  delay(1000);
+}
+
+void loop() {
+  int adcValue = analogRead(analogPin); //read the ADC value
+  float voltage = (((float)(adcValue + 188)/ 1296)+0.2);
+  //use a float and the formula based on collected data from line of best fit
+
+  int adcValue2 = analogRead(analogPin2); //AD590 data
+  float voltage2 = (((float)(adcValue2 + 188)/ 1296)+0.2); //convert to voltage
+  float AD590Current = ((((float) voltage2/8080)*1000000)-273.15); //use the transfer function to get to current where 0.300 mA = 300 Kelvin
+
+
+ float SensorResistance = ((float)(320+ (-1*(1200000 * (voltage / 2.5 + 0.5) / (0.5 - voltage / 2.5)) / (1000 - (1200 * (voltage / 2.5 + 0.5) / (0.5 - voltage / 2.5))))));
+
+ float Temperature = ((float) 3636/(log(SensorResistance/(1000 * constant)))-273.15);
+
+
+  // print values
+  Serial.print("ADC Value: ");
+  Serial.println(adcValue);
+  Serial.print("VoltageEstimateConversion: ");
+  Serial.println(voltage, 3);  //print to 3 decimal places for voltage
+  Serial.print("SensorResistance: ");
+  Serial.println(SensorResistance, 3);
+  Serial.print("Temperature: ");
+  Serial.println(Temperature, 3);
+  Serial.print("AD590Current: ");
+  Serial.println(AD590Current, 7);
+  
+  
+  
+  
+  // Add a small delay
+  delay(1500);
+}
