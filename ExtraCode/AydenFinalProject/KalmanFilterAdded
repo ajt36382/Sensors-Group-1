@@ -1,0 +1,41 @@
+#include <math.h>
+
+float temperatureEstimate = 20.0;  // Initial estimate of temperature (in Celsius)
+float temperatureVariance = 1.0;  // Initial variance (uncertainty)
+float processNoise = 0.5;  // Process noise (how much we trust the model)
+float measurementNoise = 1.8;  // Measurement noise (sensor noise)
+
+//const int analogPin2 = 39;
+const int analogPin = 39; //ADC pin
+float constant = exp(-3636 / 298.15);
+void setup() {
+  // serial 9600
+  Serial.begin(9600);
+  delay(1000);
+}
+
+void loop() {
+  int adcValue = analogRead(analogPin); // Read the ADC value
+  float voltage = (((float)(adcValue + 188) / 1296) + 0.2);
+  
+  // Compute the sensor resistance and temperature from the ADC value
+  float SensorResistance = ((float)(320 + (-1 * (1200000 * (voltage / 2.5 + 0.5) / (0.5 - voltage / 2.5)) / (1000 - (1200 * (voltage / 2.5 + 0.5) / (0.5 - voltage / 2.5))))));
+  float newTemperature = ((float)3636 / (log(SensorResistance / (1000 * constant))) - 273.15);
+
+  // Prediction Step
+  float PT = temperatureEstimate;
+  float PV = temperatureVariance + processNoise;
+  // Kalman Gain Calculation
+  float kalmanGain = PV / (PV + measurementNoise);
+  // Update Step
+  temperatureEstimate = PT + kalmanGain * (newTemperature - PT);
+  temperatureVariance = (1 - kalmanGain) * PV;
+
+  // Output the results
+  Serial.print("Raw Temperature: ");
+  Serial.println(newTemperature, 3);
+  Serial.print("Filtered Temperature: ");
+  Serial.println(temperatureEstimate, 3);
+  
+  delay(500);  // Small delay for the next reading
+}
