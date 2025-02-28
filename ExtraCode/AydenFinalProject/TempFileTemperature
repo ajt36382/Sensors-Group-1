@@ -1,0 +1,37 @@
+const int analogPin = 39; //ADC pin
+float constant = exp(-3636 / 298.15);
+void setup() {
+  // serial 9600
+  Serial.begin(9600);
+  delay(1000);
+}
+
+void loop() {
+  int adcValue = analogRead(analogPin); //read the ADC value
+  float voltage = (((float)(adcValue + 188)/ 1296)+0.2);
+  //use a float and the formula based on collected data from line of best fit
+
+  
+
+ float SensorResistance = ((float)(320+ (-1*(1200000 * (voltage / 2.5 + 0.5) / (0.5 - voltage / 2.5)) / (1000 - (1200 * (voltage / 2.5 + 0.5) / (0.5 - voltage / 2.5))))));
+
+ float Temperature = ((float) 3636/(log(SensorResistance/(1000 * constant)))-273.15);
+
+
+  // print values
+  Serial.print("ADC Value: ");
+  Serial.println(adcValue);
+  Serial.print("VoltageEstimateConversion: ");
+  Serial.println(voltage, 3);  //print to 3 decimal places for voltage
+  Serial.print("SensorResistance: ");
+  Serial.println(SensorResistance, 3);
+  Serial.print("Temperature: ");
+  Serial.println(Temperature, 3);
+ 
+  
+  
+  
+  
+  // Add a small delay
+  delay(500);
+}
