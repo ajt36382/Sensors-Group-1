@@ -1,0 +1,24 @@
+const int analogPin = 36; //ADC pin
+
+void setup() {
+  // serial 9600
+  Serial.begin(9600);
+  delay(1000);
+}
+
+void loop() {
+  int adcValue = analogRead(analogPin); //read the ADC value
+  float voltage = ((float)(adcValue + 188)/ 1296);
+  float angle = ((float)((-voltage+3.82)/0.0122));
+  //use a float and the formula based on collected data from line of best fit
+
+  // print values
+  Serial.print("ADC Value: ");
+  Serial.println(adcValue);
+  Serial.print("VoltageEstimateConversion: ");
+  Serial.println(voltage, 3);   //print to 3 decimal places for voltage
+  Serial.print("AngleEstimation: ");
+  Serial.println(angle, 1);
+  // Add a small delay
+  delay(500);
+}
