@@ -1,0 +1,54 @@
+#include <math.h>
+
+const int inputPin = 36; // Connect square wave signal to pin 36
+unsigned long startTime = 0;
+unsigned long stopTime = 0;
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(inputPin, INPUT);
+}
+
+void loop() {
+  // Debug: print raw pin value
+  int pinValue = digitalRead(inputPin);
+  Serial.print("Pin Value: ");
+  Serial.println(pinValue);
+
+  // Wait for the signal to go LOW (falling edge)
+  while (digitalRead(inputPin) == HIGH) {}
+
+  // Wait for the signal to go HIGH (rising edge)
+  while (digitalRead(inputPin) == LOW) {}
+
+  // Capture the start time at the rising edge
+  startTime = micros();
+
+  // Wait for the signal to go LOW again (falling edge)
+  while (digitalRead(inputPin) == HIGH) {}
+
+  // Capture the stop time at the next rising edge
+  stopTime = micros();
+
+  // Calculate the elapsed time in microseconds (period of the wave)
+  unsigned long elapsedTime = stopTime - startTime;
+
+  // Print period in microseconds
+  Serial.print("Period: ");
+  Serial.print(elapsedTime);
+  Serial.println(" us");
+
+  // Calculate frequency in Hz (convert from period)
+  float frequency = 1000000.0 / elapsedTime; // 1 MHz = 1 million microseconds in a second
+  float frequencyfinal = (frequency/2 +4000);
+  float ThermistorValue = (-350+(((1.44/frequencyfinal)-(0.00004794)))/(0.000000047));
+
+
+
+  Serial.print("Frequency: ");
+  Serial.print(frequencyfinal);
+  Serial.println(" Hz");
+  Serial.print("Thermistor: ");
+  Serial.println(ThermistorValue);
+  delay(1000); // Display every 3 seconds
+}
