@@ -3,7 +3,7 @@
 const int inputPin = 36; // Connect square wave signal to pin 36
 unsigned long startTime = 0;
 unsigned long stopTime = 0;
-
+float constant = exp(-3636 / 298.15);
 void setup() {
   Serial.begin(115200);
   pinMode(inputPin, INPUT);
@@ -12,8 +12,8 @@ void setup() {
 void loop() {
   // Debug: print raw pin value
   int pinValue = digitalRead(inputPin);
-  Serial.print("Pin Value: ");
-  Serial.println(pinValue);
+  //Serial.print("Pin Value: ");
+ // Serial.println(pinValue);
 
   // Wait for the signal to go LOW (falling edge)
   while (digitalRead(inputPin) == HIGH) {}
@@ -42,7 +42,7 @@ void loop() {
   float frequency = 1000000.0 / elapsedTime; // 1 MHz = 1 million microseconds in a second
   float frequencyfinal = (frequency/2 +4000);
   float ThermistorValue = (-350+(((1.44/frequencyfinal)-(0.00004794)))/(0.000000047));
-
+  float Temperature = ((float) 3636/(log(ThermistorValue/(1000 * constant)))-273.15);
 
 
   Serial.print("Frequency: ");
@@ -50,5 +50,8 @@ void loop() {
   Serial.println(" Hz");
   Serial.print("Thermistor: ");
   Serial.println(ThermistorValue);
+  Serial.print("Temperature: ");
+  Serial.println(Temperature);
   delay(1000); // Display every 3 seconds
+
 }
