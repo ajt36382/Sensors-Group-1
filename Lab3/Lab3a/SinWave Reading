@@ -1,6 +1,6 @@
-const int inputPin = 36;        // Analog input pin for sine wave
-const int midpoint = 2048;      // ADC midpoint (1.65V for 3.3V ESP32)
-const int hysteresis = 100;     // Noise immunity threshold
+const int inputPin = 36;        // sine wave imput
+const int midpoint = 2048;      // ADC midpoint (1.65V)
+const int hysteresis = 100;     // noise reduction
 
 volatile unsigned int cycleCount = 0;  // Count of zero-crossings
 unsigned long lastPrintTime = 0;       // Timing control
