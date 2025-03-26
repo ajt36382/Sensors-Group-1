@@ -1,49 +1,40 @@
-const int inputPin = 36;  // Connect sine wave signal to pin 36
-unsigned long startTime = 0;
-unsigned long stopTime = 0;
-float lastVoltage = 0;  // Store the last voltage value from analogRead()
+const int inputPin = 36;        // Analog input pin for sine wave
+const int midpoint = 2048;      // ADC midpoint (1.65V for 3.3V ESP32)
+const int hysteresis = 100;     // Noise immunity threshold
 
-// Midpoint of 0-3.3V sine wave
-const float zeroCrossingThreshold = 1.60;  // 3.3V / 2 = 1.65V
+volatile unsigned int cycleCount = 0;  // Count of zero-crossings
+unsigned long lastPrintTime = 0;       // Timing control
+bool isAbove = false;                  // State tracking
 
 void setup() {
   Serial.begin(115200);
-  pinMode(inputPin, INPUT);
+  analogReadResolution(12);    // Use full 12-bit resolution for ESP32
 }
 
 void loop() {
-  // Read the current voltage level of the sine wave (using analogRead)
-  int rawValue = analogRead(inputPin);
+  // Read analog value and check thresholds
+  int sensorValue = analogRead(inputPin);
   
-  // Convert the raw analog value (0-1023) to a voltage level (0-3.3V)
-  float voltage = (rawValue * 3.2) / 1023.0;  // Assuming a 3.3V reference
-
-  // Detect zero-crossing (when the sine wave changes sign)
-  if (lastVoltage < zeroCrossingThreshold && voltage >= zeroCrossingThreshold) {
-    // Rising edge: sine wave crossing from negative to positive
-    startTime = micros();  // Capture the rising edge time
+  // Detect positive zero-crossing with hysteresis
+  if (!isAbove && sensorValue > (midpoint + hysteresis)) {
+    isAbove = true;
+    cycleCount++;
   }
-  else if (lastVoltage >= zeroCrossingThreshold && voltage < zeroCrossingThreshold) {
-    // Falling edge: sine wave crossing from positive to negative
-    stopTime = micros();  // Capture the falling edge time
+  // Detect negative zero-crossing with hysteresis
+  else if (isAbove && sensorValue < (midpoint - hysteresis)) {
+    isAbove = false;
+  }
 
-    // Calculate the period of the sine wave (time between zero-crossings)
-    unsigned long elapsedTime = stopTime - startTime;
-
-    // Print the period in microseconds
-    Serial.print("Period: ");
-    Serial.print(elapsedTime);
-    Serial.println(" us");
-
-    // Calculate frequency in Hz (convert from period)
-    float frequency = 1000000.0 / elapsedTime; // 1 MHz = 1 million microseconds in a second
+  // Print frequency every 1 second
+  if (millis() - lastPrintTime >= 1000) {
+    // Each full sine wave cycle has 2 zero-crossings (positive and negative)
+    float frequency = cycleCount / 2.0;  // Convert crossings to full cycles
+    
     Serial.print("Frequency: ");
-    Serial.print(frequency);  // Frequency in Hz
+    Serial.print(frequency);
     Serial.println(" Hz");
 
-    delay(100);  // Small delay to avoid flickering the measurement too fast
+    cycleCount = 0;             // Reset counter
+    lastPrintTime = millis();    // Reset timer
   }
-
-  // Store the current voltage value for the next loop iteration
-  lastVoltage = voltage;
 }
