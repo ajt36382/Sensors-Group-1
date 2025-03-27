@@ -1,0 +1,51 @@
+#include <math.h>
+
+const int inputPin = 36;        // Analog input pin for sine wave
+const int midpoint = 1241;      // ADC midpoint (1.65V for 3.3V ESP32)
+const int hysteresis = 100;     // Noise immunity threshold
+
+float constant = exp(-3636 / 298.15); //for Beta Thermistor Constant
+
+volatile unsigned int cycleCount = 0;  // Count of zero-crossings
+unsigned long lastPrintTime = 0;       // Timing control
+bool isAbove = false;                  // State tracking
+
+void setup() {
+  Serial.begin(115200);
+  analogReadResolution(12);    // Use full 12-bit resolution for ESP32
+}
+
+void loop() {
+  // Read analog value and check thresholds
+  int sensorValue = analogRead(inputPin);
+  
+  // Detect positive zero-crossing with hysteresis
+  if (!isAbove && sensorValue > (midpoint + hysteresis)) {
+    isAbove = true;
+    cycleCount++;
+  }
+  // Detect negative zero-crossing with hysteresis
+  else if (isAbove && sensorValue < (midpoint - hysteresis)) {
+    isAbove = false;
+  }
+
+  // Print frequency every 1 second
+  if (millis() - lastPrintTime >= 1000) {
+    // Each full sine wave cycle has 2 zero-crossings (positive and negative)
+    float frequency = cycleCount;  // Convert crossings to full cycles
+
+    float ThermistorValue = (1 / ((6.28 * frequency) * (6.28 * frequency) * (2.304e-12))); //turn frequency to thermistor
+    float Temperature = ((float) 3636/(log(ThermistorValue/(1000 * constant)))-273.15); //turn thermistor to temperature in C
+
+    Serial.print("ThermistorValue: "); //printing all things for check purposes
+    Serial.println(ThermistorValue);
+    Serial.print("Temperature: ");
+    Serial.println(Temperature);
+    Serial.print("Frequency: ");
+    Serial.print(frequency);
+    Serial.println(" Hz");
+
+    cycleCount = 0;             // Reset counter
+    lastPrintTime = millis();    // Reset timer
+  }
+}
