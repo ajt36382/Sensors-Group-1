@@ -1,0 +1,91 @@
+import serial
+import numpy as np
+import cv2
+
+# --- Configuration ---
+# Adjust the port name and baud rate (250000 must match the Arduino code)
+SERIAL_PORT = '/dev/ttyUSB0'  # Replace with your port, e.g., 'COM3' on Windows.
+BAUD_RATE = 250000
+
+# Image dimensions from the Arduino output (24x32 pixels)
+FRAME_ROWS = 24
+FRAME_COLS = 32
+TOTAL_PIXELS = FRAME_ROWS * FRAME_COLS
+
+def parse_frame(line):
+    """
+    Convert a CSV line of thermal data into a numpy array of shape (FRAME_ROWS, FRAME_COLS).
+    Expects a line like: "23.45,24.12,25.67,..."
+    """
+    try:
+        # Strip whitespace and newline, then split by comma.
+        values = line.strip().split(',')
+        # Sometimes a trailing comma might introduce an empty string; filter them out.
+        values = [v for v in values if v]
+        # Make sure we have exactly the expected number of values.
+        if len(values) != TOTAL_PIXELS:
+            print(f"Warning: Expected {TOTAL_PIXELS} values, got {len(values)}. Skipping frame.")
+            return None
+        # Convert string values to float.
+        data = np.array([float(v) for v in values])
+        # Reshape into a 2D image.
+        frame = data.reshape((FRAME_ROWS, FRAME_COLS))
+        return frame
+    except Exception as e:
+        print("Error parsing frame:", e)
+        return None
+
+def display_thermal_frame(frame):
+    """
+    Normalize the frame to 8-bit and apply a colormap for visualization.
+    """
+    # Normalize to the range 0 to 255. Adjust min/max if needed to improve contrast.
+    norm_frame = cv2.normalize(frame, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+    # Apply a color map (COLORMAP_JET gives a nice thermal look)
+    colored_frame = cv2.applyColorMap(norm_frame, cv2.COLORMAP_JET)
+    # Resize for better display (optional: scale up by 10x)
+    resized = cv2.resize(colored_frame, (FRAME_COLS * 10, FRAME_ROWS * 10), interpolation=cv2.INTER_NEAREST)
+    cv2.imshow("Thermal Camera", resized)
+
+def main():
+    # Open the serial port.
+    try:
+        ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
+    except Exception as e:
+        print("Could not open serial port:", e)
+        return
+
+    print("Started reading thermal frames from Arduino...")
+    
+    # Main loop: read each line and process it.
+    while True:
+        try:
+            # Read a line (one frame)
+            line = ser.readline().decode('utf-8')
+            if not line:
+                continue
+
+            # Parse the CSV line to create a frame.
+            frame = parse_frame(line)
+            if frame is None:
+                continue
+
+            # Visualize the thermal frame.
+            display_thermal_frame(frame)
+
+            # Break loop if 'q' is pressed
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+
+        except KeyboardInterrupt:
+            print("Exiting...")
+            break
+        except Exception as e:
+            print("Error:", e)
+            continue
+
+    ser.close()
+    cv2.destroyAllWindows()
+
+if __name__ == "__main__":
+    main()
