@@ -1,0 +1,144 @@
+import serial
+import numpy as np
+import cv2
+import time
+
+# --- Configuration ---
+SERIAL_PORT = '/dev/ttyUSB0'  # Replace with your port, e.g., 'COM3' on Windows.
+BAUD_RATE = 250000            # Must match the Arduino's baud rate.
+FRAME_ROWS = 24
+FRAME_COLS = 32
+TOTAL_PIXELS = FRAME_ROWS * FRAME_COLS
+
+# Temperature threshold for detecting warm objects (in °C)
+WARM_THRESHOLD = 30.0
+
+# Assumed distance from camera to the object in meters.
+ASSUMED_DISTANCE = 1.0
+
+# Precompute conversion factors (meters per pixel)
+# Horizontal: Field of View (FOV) = 110° for 32 pixels.
+scene_width = 2 * ASSUMED_DISTANCE * np.tan(np.deg2rad(110 / 2))
+meters_per_pixel_x = scene_width / FRAME_COLS
+
+# Vertical: Field of View (FOV) = 75° for 24 pixels.
+scene_height = 2 * ASSUMED_DISTANCE * np.tan(np.deg2rad(75 / 2))
+meters_per_pixel_y = scene_height / FRAME_ROWS
+
+def parse_frame(line):
+    """
+    Convert a CSV line of thermal data into a numpy array (shape: FRAME_ROWS x FRAME_COLS).
+    Expected format: "23.45,24.12,25.67,..."
+    """
+    try:
+        values = line.strip().split(',')
+        # Remove empty strings (e.g., from trailing commas)
+        values = [v for v in values if v]
+        if len(values) != TOTAL_PIXELS:
+            print(f"Warning: Expected {TOTAL_PIXELS} values, got {len(values)}. Skipping frame.")
+            return None
+        data = np.array([float(v) for v in values])
+        frame = data.reshape((FRAME_ROWS, FRAME_COLS))
+        return frame
+    except Exception as e:
+        print("Error parsing frame:", e)
+        return None
+
+def display_thermal_frame(frame, boxes=None):
+    """
+    Normalize the thermal frame to an 8-bit image, apply a colormap,
+    and optionally draw bounding boxes for detected warm objects.
+    """
+    norm_frame = cv2.normalize(frame, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+    colored_frame = cv2.applyColorMap(norm_frame, cv2.COLORMAP_JET)
+
+    if boxes is not None:
+        for (x, y, w, h) in boxes:
+            cv2.rectangle(colored_frame, (x, y), (x+w, y+h), (255, 255, 255), 1)
+
+    resized = cv2.resize(colored_frame, (FRAME_COLS * 10, FRAME_ROWS * 10), interpolation=cv2.INTER_NEAREST)
+    cv2.imshow("Thermal Camera", resized)
+
+def detect_warm_objects(frame, threshold=WARM_THRESHOLD):
+    """
+    Detect warm objects by thresholding the frame.
+    Returns the binary mask and a list of bounding boxes for detected regions.
+    """
+    # Create a binary mask where temperatures above the threshold are white.
+    binary_mask = np.uint8((frame > threshold) * 255)
+
+    # Show binary mask (scaled up for visualization)
+    mask_upscaled = cv2.resize(binary_mask, (FRAME_COLS * 10, FRAME_ROWS * 10), interpolation=cv2.INTER_NEAREST)
+    cv2.imshow("Binary Mask", mask_upscaled)
+
+    contours, _ = cv2.findContours(binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    boxes = []
+    for cnt in contours:
+        if cv2.contourArea(cnt) > 3:  # Filter noise
+            x, y, w, h = cv2.boundingRect(cnt)
+            boxes.append((x, y, w, h))
+    return binary_mask, boxes
+
+def main():
+    try:
+        ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
+    except Exception as e:
+        print("Could not open serial port:", e)
+        return
+
+    print("Started reading thermal frames from Arduino...")
+    print(f"Conversion factors: {meters_per_pixel_x:.4f} m/px horizontally, {meters_per_pixel_y:.4f} m/px vertically")
+
+    # Variables for tracking speed of the warm object.
+    prev_centroid = None
+    prev_time = None
+
+    while True:
+        try:
+            line = ser.readline().decode('utf-8')
+            if not line:
+                continue
+
+            frame = parse_frame(line)
+            if frame is None:
+                continue
+
+            binary_mask, boxes = detect_warm_objects(frame, WARM_THRESHOLD)
+
+            if boxes:
+                # Track the largest object.
+                largest_box = max(boxes, key=lambda box: box[2] * box[3])
+                cx = largest_box[0] + largest_box[2] / 2  # pixel centroid X
+                cy = largest_box[1] + largest_box[3] / 2  # pixel centroid Y
+                current_centroid = (cx, cy)
+                current_time = time.time()
+
+                if prev_centroid is not None and prev_time is not None:
+                    dt = current_time - prev_time
+                    dx = current_centroid[0] - prev_centroid[0]
+                    dy = current_centroid[1] - prev_centroid[1]
+                    # Convert pixel displacement into meters (different factors for x and y)
+                    dx_m = dx * meters_per_pixel_x
+                    dy_m = dy * meters_per_pixel_y
+                    displacement_m = np.sqrt(dx_m**2 + dy_m**2)
+                    speed_mps = displacement_m / dt if dt > 0 else 0
+                    print(f"Speed: {speed_mps:.2f} m/s")
+                prev_centroid = current_centroid
+                prev_time = current_time
+
+            display_thermal_frame(frame, boxes)
+
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+        except KeyboardInterrupt:
+            print("Exiting...")
+            break
+        except Exception as e:
+            print("Error:", e)
+            continue
+
+    ser.close()
+    cv2.destroyAllWindows()
+
+if __name__ == "__main__":
+    main()
