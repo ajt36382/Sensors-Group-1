@@ -1,0 +1,123 @@
+import serial
+import numpy as np
+import cv2
+
+# --- Configuration ---
+SERIAL_PORT = '/dev/ttyUSB0'  # Replace with your port: e.g., 'COM3' on Windows.
+BAUD_RATE = 250000            # Must match the Arduino serial baud rate.
+FRAME_ROWS = 24
+FRAME_COLS = 32
+TOTAL_PIXELS = FRAME_ROWS * FRAME_COLS
+
+# Temperature threshold for detecting warm objects (in degrees Celsius)
+WARM_THRESHOLD = 30.0
+
+def parse_frame(line):
+    """
+    Convert a CSV line of thermal data into a numpy array (shape: FRAME_ROWS x FRAME_COLS).
+    Expects a line like: "23.45,24.12,25.67,..."
+    """
+    try:
+        # Strip whitespace, then split by commas.
+        values = line.strip().split(',')
+        # Remove any empty values (could be due to a trailing comma).
+        values = [v for v in values if v]
+        if len(values) != TOTAL_PIXELS:
+            print(f"Warning: Expected {TOTAL_PIXELS} values, got {len(values)}. Skipping frame.")
+            return None
+        # Convert the data to float and reshape to 2D.
+        data = np.array([float(v) for v in values])
+        frame = data.reshape((FRAME_ROWS, FRAME_COLS))
+        return frame
+    except Exception as e:
+        print("Error parsing frame:", e)
+        return None
+
+def display_thermal_frame(frame, boxes=None):
+    """
+    Normalize the thermal frame to an 8-bit image, apply a colormap,
+    and optionally draw bounding boxes for detected warm objects.
+    """
+    # Normalize frame for visualization.
+    norm_frame = cv2.normalize(frame, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+    colored_frame = cv2.applyColorMap(norm_frame, cv2.COLORMAP_JET)
+
+    # Draw any detected bounding boxes.
+    if boxes is not None:
+        for (x, y, w, h) in boxes:
+            cv2.rectangle(colored_frame, (x, y), (x+w, y+h), (255, 255, 255), 1)
+
+    # Resize image for better display.
+    resized = cv2.resize(colored_frame, (FRAME_COLS * 10, FRAME_ROWS * 10), interpolation=cv2.INTER_NEAREST)
+    cv2.imshow("Thermal Camera", resized)
+
+def detect_warm_objects(frame, threshold=WARM_THRESHOLD):
+    """
+    Detect warm objects by thresholding the frame (raw temperature values).
+    Returns a binary mask and a list of bounding boxes for detected regions.
+    """
+    # Create a binary mask where pixels above the threshold become 255.
+    binary_mask = np.uint8((frame > threshold) * 255)
+
+    # Upscale the mask for visualization (this step is not necessary for detection).
+    mask_upscaled = cv2.resize(binary_mask, (FRAME_COLS * 10, FRAME_ROWS * 10), interpolation=cv2.INTER_NEAREST)
+    cv2.imshow("Binary Mask", mask_upscaled)
+
+    # Find contours in the binary mask.
+    contours, _ = cv2.findContours(binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    boxes = []
+
+    # Only consider contours of a minimum size to reduce noise.
+    for cnt in contours:
+        if cv2.contourArea(cnt) > 3:  # Adjust this value if needed.
+            # Compute bounding rectangle coordinates.
+            x, y, w, h = cv2.boundingRect(cnt)
+            # Scale the coordinates to match the visualization scale if desired.
+            boxes.append((x, y, w, h))
+            
+    return binary_mask, boxes
+
+def main():
+    try:
+        ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
+    except Exception as e:
+        print("Could not open serial port:", e)
+        return
+
+    print("Started reading thermal frames from Arduino...")
+    
+    while True:
+        try:
+            line = ser.readline().decode('utf-8')
+            if not line:
+                continue
+
+            frame = parse_frame(line)
+            if frame is None:
+                continue
+
+            # Detect warm objects based on the WARM_THRESHOLD.
+            binary_mask, boxes = detect_warm_objects(frame, WARM_THRESHOLD)
+
+            # Display the thermal frame, optionally with bounding boxes.
+            display_thermal_frame(frame, boxes)
+
+            # Optional: Print number of detected objects.
+            print(f"Detected warm objects: {len(boxes)}")
+
+            # Exit if 'q' is pressed.
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+
+        except KeyboardInterrupt:
+            print("Exiting...")
+            break
+        except Exception as e:
+            print("Error:", e)
+            continue
+
+    ser.close()
+    cv2.destroyAllWindows()
+
+if __name__ == "__main__":
+    main()
