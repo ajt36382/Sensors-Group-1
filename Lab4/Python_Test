@@ -54,3 +54,10 @@ except KeyboardInterrupt:
     print("Closing...")
 finally:
     ser.close()
+
+
+
+
+##c:\Users\tucke\Desktop\Final project\import serial.py:49: UserWarning: frames=None which we can infer the length of, did not pass an explicit *save_count* and passed cache_frame_data=True.  To avoid a possibly unbounded cache, frame data caching has been disabled. To suppress this warning either pass `cache_frame_data=False` or `save_count=MAX_FRAMES`.
+  ani = FuncAnimation(fig, update, interval=50, blit=True)
+Data error: 'utf-8' codec can't decode byte 0xaa in position 0: invalid start byt
