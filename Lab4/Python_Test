@@ -1,0 +1,56 @@
+import serial
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
+
+# Serial port configuration
+SERIAL_PORT = 'COM3'  # Change to your ESP32's serial port
+BAUD_RATE = 250000
+
+# Thermal sensor configuration
+SENSOR_WIDTH = 32
+SENSOR_HEIGHT = 24
+
+# Initialize figure
+fig, ax = plt.subplots()
+img = ax.imshow(np.zeros((SENSOR_HEIGHT, SENSOR_WIDTH)), 
+                cmap='jet', 
+                interpolation='bilinear')
+plt.colorbar(img, label='Temperature (°C)')
+plt.title('Live Thermal Feed')
+
+# Serial port setup
+ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=0.1)
+
+def update(frame):
+    try:
+        # Read and process serial data
+        if ser.in_waiting > 0:
+            line = ser.readline().decode('utf-8').strip()
+            if line.count(',') == 767:  # Verify data integrity
+                # Convert to numpy array
+                data = np.array([float(x) for x in line.split(',')])
+                # Reshape to sensor dimensions
+                thermal_data = data.reshape((SENSOR_HEIGHT, SENSOR_WIDTH))
+                
+                # Update image
+                img.set_data(thermal_data)
+                img.set_clim(vmin=np.min(thermal_data), vmax=np.max(thermal_data))
+                
+    except (ValueError, UnicodeDecodeError) as e:
+        print(f"Data error: {str(e)}")
+    except KeyboardInterrupt:
+        ser.close()
+        raise
+    
+    return [img]
+
+# Create animation
+ani = FuncAnimation(fig, update, interval=50, blit=True)
+
+try:
+    plt.show()
+except KeyboardInterrupt:
+    print("Closing...")
+finally:
+    ser.close()
