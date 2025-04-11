@@ -4,8 +4,8 @@ import cv2
 import time
 
 # --- Configuration ---
-SERIAL_PORT = '/dev/ttyUSB0'  # Replace with your port, e.g., 'COM3' on Windows.
-BAUD_RATE = 250000            # Must match the Arduino's baud rate.
+SERIAL_PORT = 'COM5'  # serial port
+BAUD_RATE = 250000            # serial baud rate
 FRAME_ROWS = 24
 FRAME_COLS = 32
 TOTAL_PIXELS = FRAME_ROWS * FRAME_COLS
