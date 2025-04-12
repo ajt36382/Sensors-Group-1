@@ -1,0 +1,42 @@
+#include <Wire.h>
+#include <MPU6050.h>
+
+MPU6050 mpu;
+
+void setup() {
+  
+  Wire.begin();  // SDA = 21, SCL = 22 (default for ESP32)
+  Wire.setClock(400000);
+  Serial.begin(115200);
+  
+  Serial.println("Initializing MPU6050...");
+  mpu.initialize();
+
+  if (mpu.testConnection()) {
+    Serial.println("MPU6050 connection successful!");
+  } else {
+    Serial.println("MPU6050 connection failed!");
+    while (1); // Stop if MPU isn't connected
+  }
+}
+
+void loop() {
+  int16_t ax, ay, az;
+  int16_t gx, gy, gz;
+
+  // Read raw accelerometer and gyroscope data
+  mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+
+  // Print data to Serial Monitor
+  Serial.print("Accel: ");
+  Serial.print("X="); Serial.print(ax);
+  Serial.print(" Y="); Serial.print(ay);
+  Serial.print(" Z="); Serial.print(az);
+
+  Serial.print(" | Gyro: ");
+  Serial.print("X="); Serial.print(gx);
+  Serial.print(" Y="); Serial.print(gy);
+  Serial.print(" Z="); Serial.println(gz);
+
+  delay(100);  // Wait half a second
+}
