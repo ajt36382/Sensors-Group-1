@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<RSLogix5000Content ContainsContext="false" SchemaRevision="1.0" TargetName="PLC_LD" TargetType="Controller">
+  <Controller CommPath="AB_VBP-1\1" MajorRev="24" Name="a_PLCControllerSuite" ProcessorType="Emulator" Use="Target">
+    <DataTypes/>
+    <AddOnInstructionDefinitions/>
+    <Tags>
+      <Tag Constant="false" DataType="BOOL" ExternalAccess="Read/Write" Name="Start" TagType="Base">
+        <Data Format="Decorated">
+          <DataValue DataType="BOOL" Value="1"/>
+        </Data>
+      </Tag>
+      <Tag Constant="false" DataType="BOOL" ExternalAccess="Read/Write" Name="Stop" TagType="Base">
+        <Data Format="Decorated">
+          <DataValue DataType="BOOL" Value="0"/>
+        </Data>
+      </Tag>
+      <Tag Constant="false" DataType="BOOL" ExternalAccess="Read/Write" Name="Motor" TagType="Base">
+        <Data Format="Decorated">
+          <DataValue DataType="BOOL" Value="0"/>
+        </Data>
+      </Tag>
+    </Tags>
+    <Programs>
+      <Program Disabled="false" MainRoutineName="MainRoutine" Name="Program" TestEdits="false" Use="Target" UseAsFolder="false">
+        <Tags/>
+        <Routines>
+          <Routine Name="MainRoutine" Type="RLL">
+            <RLLContent>
+              <Rung Number="0" Type="N">
+                <Text><![CDATA[[XIC(Start), XIC(Stop)]OTE(Motor);]]></Text>
+              </Rung>
+            </RLLContent>
+          </Routine>
+        </Routines>
+      </Program>
+    </Programs>
+    <Tasks>
+      <Task Class="Standard" DisableUpdateOutputs="false" InhibitTask="false" Name="Task" Priority="10" Type="CONTINUOUS" Watchdog="500">
+        <ScheduledPrograms>
+          <ScheduledProgram Name="Program"/>
+        </ScheduledPrograms>
+      </Task>
+    </Tasks>
+  </Controller>
+</RSLogix5000Content>
