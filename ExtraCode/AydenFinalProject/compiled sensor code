@@ -1,0 +1,90 @@
+#include <math.h>
+#include <Wire.h>
+#include <PulseSensorPlayground.h>
+#include <MPU6050.h>
+
+// ========== TEMPERATURE SENSOR (THERMISTOR) ==========
+float temperatureEstimate = 20.0;
+float temperatureVariance = 1.0;
+float processNoise = 0.5;
+float measurementNoise = 1.8;
+const int analogTempPin = 15;  // ADC pin for thermistor
+float constant = exp(-3636 / 298.15);
+const float R_FIXED = 820.0;
+
+// ========== HEART RATE SENSOR ==========
+const int PulseWire = 4;       // PulseSensor input pin
+int Threshold = 550;
+PulseSensorPlayground pulseSensor;
+
+// ========== MOTION SENSOR (MPU6050) ==========
+MPU6050 mpu;
+
+// ========== SETUP ==========
+void setup() {
+  Serial.begin(115200);
+  delay(1000);
+
+  // --- Setup Thermistor (no init needed) ---
+
+  // --- Setup Pulse Sensor ---
+  pulseSensor.analogInput(PulseWire);
+  pulseSensor.setThreshold(Threshold);
+  if (pulseSensor.begin()) {
+    Serial.println("✅ PulseSensor initialized.");
+  }
+
+  // --- Setup MPU6050 ---
+  Wire.begin();  // For ESP32: SDA = 21, SCL = 22
+  Wire.setClock(400000);
+  Serial.println("Initializing MPU6050...");
+  mpu.initialize();
+  if (mpu.testConnection()) {
+    Serial.println("✅ MPU6050 connection successful!");
+  } else {
+    Serial.println("❌ MPU6050 connection failed!");
+    while (1);  // Halt if no connection
+  }
+}
+
+// ========== MAIN LOOP ==========
+void loop() {
+  // --- Read & Filter Temperature ---
+  int adcValue = analogRead(analogTempPin);
+  float voltage = (((float)(adcValue + 188) / 1296.0) + 0.22);
+  float SensorResistance = (voltage * R_FIXED) / (3.3 - voltage);
+  float newTemperature = (float)3636 / (log(SensorResistance / (1000 * constant))) - 273.15;
+
+  float PT = temperatureEstimate;
+  float PV = temperatureVariance + processNoise;
+  float kalmanGain = PV / (PV + measurementNoise);
+  temperatureEstimate = PT + kalmanGain * (newTemperature - PT);
+  temperatureVariance = (1 - kalmanGain) * PV;
+
+  // --- Read Heartbeat ---
+  if (pulseSensor.sawStartOfBeat()) {
+    int myBPM = pulseSensor.getBeatsPerMinute();
+    Serial.println("♥ Heartbeat detected!");
+    Serial.print("BPM: ");
+    Serial.println(myBPM);
+  }
+
+  // --- Read MPU6050 ---
+  int16_t ax, ay, az;
+  int16_t gx, gy, gz;
+  mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+
+  // --- Output All Sensor Data ---
+  Serial.print("Filtered Temp (°C): ");
+  Serial.println(temperatureEstimate, 2);
+
+  Serial.print("Accel => X: "); Serial.print(ax);
+  Serial.print(" Y: "); Serial.print(ay);
+  Serial.print(" Z: "); Serial.print(az);
+
+  Serial.print(" | Gyro => X: "); Serial.print(gx);
+  Serial.print(" Y: "); Serial.print(gy);
+  Serial.print(" Z: "); Serial.println(gz);
+
+  delay(500);  // General delay for smoother output
+}
