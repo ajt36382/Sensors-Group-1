@@ -1,0 +1,236 @@
+#include <Wire.h>
+#include <MPU6050.h>
+#include <PulseSensorPlayground.h>
+#include "ThingSpeak.h"
+#include "WiFi.h"
+#include "esp_eap_client.h"
+
+// ===== Thermistor / Kalman Filter Variables =====
+float temperatureEstimate = 20.0;
+float temperatureVariance = 1.0;
+float processNoise = 0.5;
+float measurementNoise = 1.8;
+
+const int analogPin = 15; // Thermistor ADC pin
+float constant = exp(-3636 / 298.15);
+float knownResistor = 820.0;
+float supplyVoltage = 3.3;
+
+// ===== MPU6050 Variables =====
+MPU6050 mpu;
+int16_t ax, ay, az;
+int16_t gx, gy, gz;
+
+// ===== PulseSensor Variables =====
+const int PulseWire = 2;  // PulseSensor connected to analog pin 36
+int Threshold = 550;
+
+PulseSensorPlayground pulseSensor;
+
+// ===== Counter Variables =====
+int counter = 0;  // To count how many times gx exceeds threshold
+unsigned long lastCounterTime = 0;  // Timestamp for when the counter was last incremented
+const unsigned long interval = 15000;  // 15 seconds in milliseconds
+
+// ===== Temperature Tracking Variables =====
+unsigned long tempStartTime = 0;  // Track when temperature recording starts
+const unsigned long tempTrackDuration = 60000;  // 60 seconds in milliseconds
+float recordedTemperature = 0.0;  // Variable to store the recorded temperature after 60 seconds
+bool temperatureThresholdSet = false;  // Flag to indicate whether the threshold has been set
+float temperatureThreshold = 0.0;  // Threshold value for comparing the temperature after 60 seconds
+
+// ===== Heart Rate Tracking Variables =====
+unsigned long heartRateStartTime = 0;  // Track when heart rate recording starts
+const unsigned long heartRateTrackDuration = 60000;  // 60 seconds in milliseconds
+int heartRate = 0;  // Variable to store the recorded heart rate
+int recordedHeartRate = 0;  // Recorded heart rate after 60 seconds
+bool heartRateThresholdSet = false;  // Flag to indicate whether the heart rate threshold has been set
+int heartRateThreshold = 0;  // Heart rate threshold value
+
+// ===== Wi-Fi and ThingSpeak Variables =====
+#define EAP_IDENTITY "ajt36382"
+#define EAP_USERNAME "ajt36382"
+#define EAP_PASSWORD "ATuck4000!?"
+#define MAX_DISCONNECTS 4
+const char* ssid = "PAWS-Secure";
+unsigned char disconnectNum = 0;
+WiFiClient client;
+#define THINGSPEAK_WRITE_KEY "XH8UFOIIJTKBI7ZA"
+#define CHANNEL_NAME 2648769
+unsigned long prev_millis = 0;
+
+// ===== Wi-Fi Setup Functions =====
+void WiFiStationConnected(WiFiEvent_t event) {
+  Serial.println("Connected to AP successfully!");
+}
+
+void WiFiGotIP(WiFiEvent_t event) {
+  Serial.println("WiFi connected");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+}
+
+void WiFiStationDisconnected(WiFiEvent_t event) {
+  Serial.println("Disconnected from WiFi access point");
+  Serial.print("WiFi lost connection. Trying to reconnect...");
+  if (disconnectNum < MAX_DISCONNECTS) {
+    Serial.print("Attempt #");
+    Serial.println(disconnectNum + 1);
+    WiFi.begin(ssid, WPA2_AUTH_PEAP, EAP_IDENTITY, EAP_USERNAME, EAP_PASSWORD);
+    delay(30000);  // 30-second retry
+  } else {
+    Serial.println("Max reconnect attempts reached. Restarting...");
+    ESP.restart();  // Restart the ESP32 after max retries
+  }
+  disconnectNum++;
+}
+
+void wifiSetup() {
+  WiFi.disconnect(true);
+  WiFi.onEvent(WiFiStationConnected, ARDUINO_EVENT_WIFI_STA_CONNECTED);
+  WiFi.onEvent(WiFiGotIP, ARDUINO_EVENT_WIFI_STA_GOT_IP);
+  WiFi.onEvent(WiFiStationDisconnected, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
+  WiFi.mode(WIFI_STA);
+  Serial.println("Attempting to connect to WiFi...");
+  WiFi.begin(ssid, WPA2_AUTH_PEAP, EAP_IDENTITY, EAP_USERNAME, EAP_PASSWORD);
+  int status = WiFi.waitForConnectResult();
+  if (status != WL_CONNECTED) {
+    Serial.println("Connection failed, retrying...");
+  } else {
+    Serial.println("Connected to WiFi successfully!");
+  }
+  ThingSpeak.begin(client); //initialize Thingspeak connection
+}
+
+void setup() {
+  // Initialize Serial Monitor
+  Serial.begin(115200);
+
+  // Setup Wi-Fi
+  wifiSetup();
+
+  // ===== MPU6050 Setup =====
+  Wire.begin();  
+  Wire.setClock(400000);
+  Serial.println("Initializing MPU6050...");
+  mpu.initialize();
+  if (mpu.testConnection()) {
+    Serial.println("MPU6050 connection successful!");
+  } else {
+    Serial.println("MPU6050 connection failed!");
+    while (1); // Stay here if the connection fails
+  }
+
+  // ===== PulseSensor Setup =====
+  pulseSensor.analogInput(PulseWire);
+  pulseSensor.setThreshold(Threshold);
+  if (pulseSensor.begin()) {
+    Serial.println("We created a pulseSensor Object!");
+  }
+
+  // Initialize prev_millis for ThingSpeak timing
+  prev_millis = millis();
+  delay(1000); // Small delay for stability
+}
+
+void loop() {
+  // ===== Temperature Reading and Kalman Filter =====
+  int adcValue = analogRead(analogPin);
+  float voltage = (((float)(adcValue + 188) / 1296) + 0.22);
+  float thermistorResistance = knownResistor * (supplyVoltage / voltage - 1);
+  float newTemperature = 3636.0 / log(thermistorResistance / (1000 * constant)) - 273.15;
+
+  float PT = temperatureEstimate;
+  float PV = temperatureVariance + processNoise;
+  float kalmanGain = PV / (PV + measurementNoise);
+  temperatureEstimate = PT + kalmanGain * (newTemperature - PT) - 5;
+  temperatureVariance = (1 - kalmanGain) * PV;
+
+  Serial.print("Filtered Temperature: ");
+  Serial.println(temperatureEstimate, 2);
+
+  // ===== Track Temperature for 60 seconds =====
+  if (tempStartTime == 0) {
+    tempStartTime = millis();  // Start the timer when we begin tracking temperature
+  }
+
+  if (millis() - tempStartTime >= tempTrackDuration && !temperatureThresholdSet) {
+    recordedTemperature = temperatureEstimate;  // Record the temperature at the 60-second mark
+    temperatureThreshold = recordedTemperature;  // Set the threshold as the recorded temperature
+    temperatureThresholdSet = true;  // Mark the threshold as set
+    Serial.print("Temperature threshold set to: ");
+    Serial.println(temperatureThreshold, 2);
+  }
+
+  // ===== Check if Temperature stays below the recorded threshold =====
+  if (temperatureThresholdSet) {
+    if (temperatureEstimate < temperatureThreshold) {
+      Serial.println("Temperature is below the threshold.");
+    } else {
+      Serial.println("Temperature is above the threshold.");
+    }
+  }
+
+  // ===== Heart Rate Tracking for 60 seconds =====
+  if (heartRateStartTime == 0) {
+    heartRateStartTime = millis();  // Start the timer when we begin tracking heart rate
+  }
+
+  if (millis() - heartRateStartTime >= heartRateTrackDuration && !heartRateThresholdSet) {
+    recordedHeartRate = heartRate;  // Record the heart rate at the 60-second mark
+    heartRateThreshold = recordedHeartRate;  // Set the threshold as the recorded heart rate
+    heartRateThresholdSet = true;  // Mark the threshold as set
+    Serial.print("Heart rate threshold set to: ");
+    Serial.println(heartRateThreshold);
+  }
+
+  if (heartRateThresholdSet) {
+    if (heartRate < heartRateThreshold) {
+      Serial.println("Heart rate is below the threshold.");
+    } else {
+      Serial.println("Heart rate is above the threshold.");
+    }
+  }
+
+  // ===== MPU6050 Reading =====
+  mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+  Serial.print("Gyro X: ");
+  Serial.println(gx);
+
+  // ===== Check if Gyro X (gx) exceeds threshold =====
+  if ((gx > -100 || gx < -650) && (millis() - lastCounterTime >= interval)) {
+    counter++;  // Increment the counter if 15 seconds have passed
+    lastCounterTime = millis();  // Update the timestamp for last increment
+    Serial.print("Gyro X exceeded threshold, counter: ");
+    Serial.println(counter);
+  }
+
+  // ===== PulseSensor Reading =====
+  if (pulseSensor.sawStartOfBeat()) {
+    heartRate = pulseSensor.getBeatsPerMinute();  // Get the current heart rate from the sensor
+    Serial.print("♥  A HeartBeat Happened! BPM: ");
+    Serial.println(heartRate);
+  }
+
+  // ===== Send Data to ThingSpeak =====
+  if (millis() - prev_millis >= 2000) {  // Send data every 2 seconds
+    prev_millis = millis();
+
+    // Send filtered temperature and heart rate to ThingSpeak
+    ThingSpeak.setField(3, temperatureEstimate);
+    ThingSpeak.setField(4, heartRate);
+    ThingSpeak.setField(5, counter);
+    
+    // Attempt to write data to ThingSpeak and check for success
+    int responseCode = ThingSpeak.writeFields(CHANNEL_NAME, THINGSPEAK_WRITE_KEY);
+    
+    if (responseCode == 200) {
+      Serial.println("Data successfully sent to ThingSpeak.");
+    } else {
+      Serial.print("Error sending data to ThingSpeak. Response code: ");
+      Serial.println(responseCode);
+    }
+  }
+
+  delay(1000);  // Small delay to avoid overwhelming serial output
+}
