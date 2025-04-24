@@ -1,0 +1,86 @@
+#include <Wire.h>
+#include <MPU6050.h>
+#include <math.h>
+#include <PulseSensorPlayground.h>
+
+// ===== Thermistor / Kalman Filter Variables =====
+float temperatureEstimate = 20.0;
+float temperatureVariance = 1.0;
+float processNoise = 0.5;
+float measurementNoise = 1.8;
+
+const int analogPin = 15; // Thermistor ADC pin
+float constant = exp(-3636 / 298.15);
+float knownResistor = 820.0;
+float supplyVoltage = 3.3;
+
+// ===== MPU6050 Variables =====
+MPU6050 mpu;
+int16_t ax, ay, az;
+int16_t gx, gy, gz;
+
+// ===== PulseSensor Variables =====
+const int PulseWire = 2;  // PulseSensor connected to analog pin 36
+int Threshold = 550;
+
+PulseSensorPlayground pulseSensor;
+
+void setup() {
+  // Initialize Serial Monitor
+  Serial.begin(115200);
+
+  // ===== MPU6050 Setup =====
+  Wire.begin();  
+  Wire.setClock(400000);
+  Serial.println("Initializing MPU6050...");
+  mpu.initialize();
+
+  if (mpu.testConnection()) {
+    Serial.println("MPU6050 connection successful!");
+  } else {
+    Serial.println("MPU6050 connection failed!");
+    while (1);
+  }
+
+  // ===== PulseSensor Setup =====
+  pulseSensor.analogInput(PulseWire);
+  pulseSensor.setThreshold(Threshold);
+
+  if (pulseSensor.begin()) {
+    Serial.println("We created a pulseSensor Object !");
+  }
+
+  delay(1000);
+}
+
+void loop() {
+  // ===== Temperature Reading and Kalman Filter =====
+  int adcValue = analogRead(analogPin);
+  float voltage = (((float)(adcValue + 188) / 1296) + 0.22);
+  float thermistorResistance = knownResistor * (supplyVoltage / voltage - 1);
+  float newTemperature = 3636.0 / log(thermistorResistance / (1000 * constant)) - 273.15;
+
+  float PT = temperatureEstimate;
+  float PV = temperatureVariance + processNoise;
+  float kalmanGain = PV / (PV + measurementNoise);
+  temperatureEstimate = PT + kalmanGain * (newTemperature - PT) - 5;
+  temperatureVariance = (1 - kalmanGain) * PV;
+
+  Serial.print("Filtered Temperature: ");
+  Serial.println(temperatureEstimate, 2);
+
+  // ===== MPU6050 Reading =====
+  mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+  Serial.print("Accel X: ");
+  Serial.println(ax);
+
+  // ===== PulseSensor Reading =====
+  if (pulseSensor.sawStartOfBeat()) {
+    int myBPM = pulseSensor.getBeatsPerMinute();
+    Serial.println("♥  A HeartBeat Happened!");
+    Serial.print("BPM: ");
+    Serial.println(myBPM);
+  }
+
+  delay(500);
+}
