@@ -1,0 +1,227 @@
+#include <Wire.h>
+#include <MPU6050.h>
+#include <math.h>
+#include <PulseSensorPlayground.h>
+#include "ThingSpeak.h"
+#include "WiFi.h"
+#include "esp_eap_client.h"
+
+// Wi-Fi credentials for WPA2 Enterprise
+#define EAP_IDENTITY "ajt36382"
+#define EAP_USERNAME "ajt36382"
+#define EAP_PASSWORD "ATuck4000!?"  // change this if you change your password
+#define MAX_DISCONNECTS 4
+const char* ssid = "PAWS-Secure";  // must match campus WiFi name
+unsigned char disconnectNum = 0;
+WiFiClient client;
+#define THINGSPEAK_WRITE_KEY "XH8UFOIIJTKBI7ZA"
+#define CHANNEL_NAME 2648769
+
+// Temperature filtering setup
+float temperatureEstimate = 20.0;
+float temperatureVariance = 1.0;
+float processNoise = 0.5;     // how much we expect the temp to change
+float measurementNoise = 1.8; // how noisy our sensor is
+const int analogPin = 36;     // analog pin where thermistor is connected
+float constant = exp(-3636 / 298.15);  // thermistor math constant
+float knownResistor = 820.0;  // the other resistor in voltage divider
+float supplyVoltage = 3.3;
+
+// Motion sensor setup
+MPU6050 mpu;
+int16_t ax, ay, az;
+int16_t gx, gy, gz;
+
+// Pulse sensor setup
+const int PulseWire = 39;
+int Threshold = 550; // tweak this if it’s not picking up properly
+PulseSensorPlayground pulseSensor;
+
+// Motion + heart + temp tracking stuff
+int counter = 0;
+unsigned long lastCounterTime = 0;
+const unsigned long interval = 15000;  // wait 15s between move counts
+unsigned long tempStartTime = 0;
+const unsigned long tempTrackDuration = 60000;  // wait 1 min to define baseline
+float recordedTemperature = 0.0;
+bool temperatureThresholdSet = false;
+float temperatureThreshold = 0.0;
+
+unsigned long heartRateStartTime = 0;
+const unsigned long heartRateTrackDuration = 60000; // same for heart rate
+int heartRate = 0;
+int recordedHeartRate = 0;
+bool heartRateThresholdSet = false;
+int heartRateThreshold = 0;
+
+unsigned long prev_millis = 0;
+
+// Sleep score stuff
+unsigned long sleepRatingStartTime = 0;
+const unsigned long sleepRatingDuration = 3600000;  // every hour
+int initialCounter = 0;
+bool sleepRatingPosted = false;
+
+void WiFiStationConnected(WiFiEvent_t event) {
+  Serial.println("Connected to AP!");
+}
+
+void WiFiGotIP(WiFiEvent_t event) {
+  Serial.println("WiFi connected, got IP.");
+  Serial.println(WiFi.localIP());
+}
+
+void WiFiStationDisconnected(WiFiEvent_t event) {
+  Serial.println("WiFi disconnected... trying again");
+  if (disconnectNum < MAX_DISCONNECTS) {
+    Serial.print("Reconnect attempt #");
+    Serial.println(disconnectNum + 1);
+    WiFi.begin(ssid, WPA2_AUTH_PEAP, EAP_IDENTITY, EAP_USERNAME, EAP_PASSWORD);
+    delay(30000);  // pause before retrying
+  } else {
+    Serial.println("Too many failures, restarting...");
+    ESP.restart();
+  }
+  disconnectNum++;
+}
+
+void wifiSetup() {
+  WiFi.disconnect(true);  // just in case
+  WiFi.onEvent(WiFiStationConnected, ARDUINO_EVENT_WIFI_STA_CONNECTED);
+  WiFi.onEvent(WiFiGotIP, ARDUINO_EVENT_WIFI_STA_GOT_IP);
+  WiFi.onEvent(WiFiStationDisconnected, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
+  WiFi.mode(WIFI_STA);
+
+  WiFi.begin(ssid, WPA2_AUTH_PEAP, EAP_IDENTITY, EAP_USERNAME, EAP_PASSWORD);
+  if (WiFi.waitForConnectResult() != WL_CONNECTED) {
+    Serial.println("WiFi connection failed.");
+  } else {
+    Serial.println("WiFi connected.");
+  }
+
+  ThingSpeak.begin(client);
+}
+
+void setup() {
+  Serial.begin(115200);
+  wifiSetup();
+
+  Wire.begin();
+  Wire.setClock(400000);  // fast I2C
+  Serial.println("Initializing MPU...");
+  mpu.initialize();
+  if (!mpu.testConnection()) {
+    Serial.println("MPU6050 connection failed. Halting.");
+    while (1);
+  }
+
+  pulseSensor.analogInput(PulseWire);
+  pulseSensor.setThreshold(Threshold);
+  pulseSensor.begin();
+
+  prev_millis = millis();
+  delay(1000);  // short pause for good luck
+}
+
+void loop() {
+  // TEMP SENSOR STUFF
+  int adcValue = analogRead(analogPin);
+  float voltage = (((float)(adcValue + 188) / 1296) + 0.22);
+  float resistance = knownResistor * (supplyVoltage / voltage - 1);
+  float temp = 3636.0 / log(resistance / (1000 * constant)) - 273.15;
+
+  float PT = temperatureEstimate;
+  float PV = temperatureVariance + processNoise;
+  float kalmanGain = PV / (PV + measurementNoise);
+  temperatureEstimate = PT + kalmanGain * (temp - PT) - 5;  // -5 offset helps accuracy
+  temperatureVariance = (1 - kalmanGain) * PV;
+
+  Serial.print("Temperature: ");
+  Serial.println(temperatureEstimate, 2);
+
+  // set temp threshold once after a minute
+  if (tempStartTime == 0) tempStartTime = millis();
+  if (millis() - tempStartTime >= tempTrackDuration && !temperatureThresholdSet) {
+    temperatureThreshold = temperatureEstimate;
+    temperatureThresholdSet = true;
+    Serial.print("Baseline temp: ");
+    Serial.println(temperatureThreshold);
+  }
+
+  // say whether temp is lower or higher
+  if (temperatureThresholdSet) {
+    Serial.println(temperatureEstimate < temperatureThreshold ? "Temp is low" : "Temp is high");
+  }
+
+  // HEART RATE STUFF
+  if (heartRateStartTime == 0) heartRateStartTime = millis();
+  if (millis() - heartRateStartTime >= heartRateTrackDuration && !heartRateThresholdSet) {
+    heartRateThreshold = heartRate;
+    heartRateThresholdSet = true;
+    Serial.print("Baseline HR: ");
+    Serial.println(heartRateThreshold);
+  }
+
+  if (heartRateThresholdSet) {
+    Serial.println(heartRate < heartRateThreshold ? "HR is low" : "HR is high");
+  }
+
+  // GYRO STUFF
+  mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+  Serial.print("Gyro X: ");
+  Serial.println(gx);
+  if ((gx > -100 || gx < -650) && millis() - lastCounterTime >= interval) {
+    counter++;
+    lastCounterTime = millis();
+    Serial.print("Motion! Count = ");
+    Serial.println(counter);
+  }
+
+  // PULSE SENSOR
+  if (pulseSensor.sawStartOfBeat()) {
+    heartRate = pulseSensor.getBeatsPerMinute();
+    Serial.print("♥ BPM: ");
+    Serial.println(heartRate);
+  }
+
+  // REGULAR UPLOAD TO THINGSPEAK
+  if (millis() - prev_millis >= 2000) {
+    prev_millis = millis();
+    ThingSpeak.setField(3, temperatureEstimate);
+    ThingSpeak.setField(4, heartRate);
+    ThingSpeak.setField(5, counter);
+    int response = ThingSpeak.writeFields(CHANNEL_NAME, THINGSPEAK_WRITE_KEY);
+    Serial.println(response == 200 ? "Data sent." : "ThingSpeak error.");
+  }
+
+  // SLEEP RATING CALCULATION
+  if (sleepRatingStartTime == 0) {
+    sleepRatingStartTime = millis();
+    initialCounter = counter;  // start counting motion
+  }
+
+  if (millis() - sleepRatingStartTime >= sleepRatingDuration && !sleepRatingPosted) {
+    int sleepRating = 1; // everyone starts at 1 
+
+    if (temperatureEstimate < temperatureThreshold) sleepRating++;
+    if (heartRate < heartRateThreshold) sleepRating++;
+    if ((counter - initialCounter) <= 10) sleepRating++;
+
+    ThingSpeak.setField(6, sleepRating); // send to 6th field
+    int response = ThingSpeak.writeFields(CHANNEL_NAME, THINGSPEAK_WRITE_KEY);
+
+    Serial.print("Sleep rating = ");
+    Serial.println(sleepRating);
+    Serial.println(response == 200 ? "Sleep rating sent." : "Sleep send failed.");
+    sleepRatingPosted = true;
+  }
+
+  // reset hourly timer
+  if (millis() - sleepRatingStartTime >= sleepRatingDuration + 5000) {
+    sleepRatingStartTime = millis();
+    initialCounter = counter;
+    sleepRatingPosted = false;
+  }
+
+  delay(1000); // short pause for stability
+}
